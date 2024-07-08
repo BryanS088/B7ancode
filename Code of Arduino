@@ -1,0 +1,214 @@
+#include <HCSR04.h>
+#include <Pixy2.h>
+
+int MotorPin1 = 3; // L298N
+int MotorPin2 = 2;
+
+// pins de los ultrasonicos
+int LeftSensorPinTrig = 9;
+int LeftSensorPinEcho = 8;
+int RightSensorPinTrig = 5;
+int RightSensorPinEcho = 4;
+int FrontSensorPinTrig = 7;
+int FrontSensorPinEcho = 6; 
+
+// boton pin
+int ButtonPin = A0;
+
+// Maximo rango del ultrasonico
+int FrontDistanceRange = 35;
+int LeftDistanceRange = 50;
+int RightDistanceRange = 50;
+
+// Rotacion del servo
+int LeftServoRotation = 800;
+int RightServoRotation = 0;
+int CenterServoRotation = 500;
+// Signature for the pixy cam
+int RedColorSignature = 1;
+int GreenColorSignature = 2;
+
+// parado automatico
+// Encoder variables
+int EncoderPinA = A1:
+int EncoderPinB = A2;
+volatile long pulseCount = 0; // Pulse count
+const int ppr = 360; // Pulses per revolution
+const float wheelDiameter = 0.1; // Wheel diameter in meters
+
+bool BotInRotation = false;
+bool ButtonPressed = false;
+bool BrickDetected = false;
+bool BotStop = false;
+
+
+bool Debug = true;
+
+HCSR04 LeftSensor (LeftSensorPinTrig, LeftSensorPinEcho);
+HCSR04 RightSensor (RightSensorPinTrig, RightSensorPinEcho);
+HCSR04 FrontSensor (FrontSensorPinTrig, FrontSensorPinEcho);
+
+Pixy2 pixy;
+
+//inciar carro
+
+void MotorForward() {
+  digitalWrite(MotorPin1, HIGH);
+  digitalWrite(MotorPin2, LOW);
+}
+
+void MotorBackward() {
+  digitalWrite(MotorPin1, LOW);
+  digitalWrite(MotorPin2, HIGH);
+}
+
+void ServoRotation(int Angle) {
+  if (BotInRotation == false) {
+    //Position, Rotation
+    pixy.setServos(0, CenterServoRotation);
+   // servo.write(CenterServoRotation);
+  }
+  //Position, Rotation
+  pixy.setServos(0, Angle);
+  MotorBackward();
+} 
+
+void AddPulse(int number) {
+  if (number == NULL) {
+    number = 1;
+  }
+
+  pulseCount = pulseCount + number
+
+}
+
+// calcular la distancia recorrida
+float calculateDistance(long pulses, int ppr, float wheelDiameter) {
+  // Calculate the circumference of the wheel
+  float circumference = 3.14159265358979323846 * wheelDiameter;
+
+  // calcular la distancia por pulso
+  float distancePerPulse = circumference / ppr;
+
+  // calcular la distancia total recorrida
+  float distanceTraveled = distancePerPulse * pulses;
+
+  return distanceTraveled;
+}
+
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Setup Working");
+  pinMode(MotorPin1, OUTPUT);
+  pinMode(MotorPin2, OUTPUT);
+  pinMode(ButtonPin, INPUT);
+
+  // For Rotative Encoder 
+  pinMode(encoderPinA, INPUT);
+  pinMode(encoderPinB, INPUT);
+ 
+  attachInterrupt(0,AddPulse(1), wheelDiameter)
+
+  Serial.println("Initializing Pixy2...");
+  int pixyInitStatus = pixy.init();
+  if (pixyInitStatus != 0) {
+    Serial.print("Pixy2 initialization failed with code: ");
+    Serial.println(pixyInitStatus);
+  } else {
+    Serial.println("Pixy2 initialized successfully");
+  }
+  Serial.println("Setup Complete");
+  ServoRotation(CenterServoRotation);
+}
+
+void loop() {
+
+  while (BotStop == true) {
+    return;
+  }
+
+  while (ButtonPressed == false) {
+    int buttonState = analogRead(ButtonPin);
+    delay(50); // debounce delay
+    if (buttonState == LOW) {
+      ButtonPressed = true;
+      Serial.println("Button Pressed");
+    }
+  }
+
+  int FrontDistance = FrontSensor.dist();
+  int LeftDistance = LeftSensor.dist();
+  int RightDistance = RightSensor.dist(); // distancia del ultrasonic sensor
+  
+  bool RedBlockDetected = false;
+  bool GreenBlockDetected = false;
+
+  pixy.ccc.getBlocks();
+  if (pixy.ccc.numBlocks) {
+    for (int i = 0; i < pixy.ccc.numBlocks; i++) {
+      if (pixy.ccc.blocks[i].m_signature == RedColorSignature) {
+        RedBlockDetected = true;
+      } else if (pixy.ccc.blocks[i].m_signature == GreenColorSignature) {
+        GreenBlockDetected = true;
+      }
+    }
+  }
+
+  if (Debug == true) {
+    Serial.print("Front Distance: ");
+    Serial.println(FrontDistance);
+    Serial.print("Left Distance: ");
+    Serial.println(LeftDistance);
+    Serial.print("Right Distance: ");
+    Serial.println(RightDistance);
+  
+  }
+
+  if ((RedBlockDetected == true) || (GreenBlockDetected == true)) {
+    if (RedBlockDetected == 1 && BotInRotation == false) {
+      ServoRotation(RightServoRotation);
+      if (Debug == true) {
+        Serial.println("Red Block Detected: Rotating Right");
+      }
+    } else if (GreenBlockDetected == 1 && BotInRotation == false) {
+      ServoRotation(LeftServoRotation);
+      if (Debug == true) {
+        Serial.println("Green Block Detected: Rotating Left");
+      }
+    }
+    BrickDetected = true;
+
+   BotInRotation = true;
+
+  } else if (FrontDistance <= FrontDistanceRange && FrontDistance > 0) {
+
+    if (BrickDetected == true) {
+       BotInRotation = false;
+    }
+
+    if (Debug == true) {
+      Serial.println("Obstacle Detected Ahead");
+    }
+    if (LeftDistance > RightDistance) {
+      BotInRotation = true;
+      if (Debug == true) {
+        Serial.println("Turning Left");
+      }
+      ServoRotation(LeftServoRotation);
+    } else if (RightDistance > LeftDistance) {
+      BotInRotation = true;
+      if (Debug == true) {
+        Serial.println("Turning Right");
+      }
+      ServoRotation(RightServoRotation);
+    }
+  } else {
+    if (BotInRotation == true) {
+      BotInRotation = false;
+      ServoRotation(CenterServoRotation);
+      Serial.println("Resuming Forward Motion");
+    }
+  }
+ 
+}
