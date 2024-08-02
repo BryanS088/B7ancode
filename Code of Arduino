@@ -1,131 +1,124 @@
+#include <Servo.h>
 #include <HCSR04.h>
 #include <Pixy2.h>
 
-// Pines del motor
-int MotorPin1 = 3; // control with the l298n
-int MotorPin2 = 2;
 
-// Pines de los sensores ultrasonicos
-int LeftSensorPinTrig =  9;
-int LeftSensorPinEcho =  8;
-int RightSensorPinTrig =  5;
-int RightSensorPinEcho =  4;
-int FrontSensorPinTrig =  7;
-int FrontSensorPinEcho =  6; 
+// Pins for Motor
+int R_IS = 2;
+int R_EN = 5;
+int R_PWM = 6;
+int L_IS = 3;
+int L_EN = 4;
+int L_PWM = 7;
 
-// Pin del botón
+// Define the pins for the ultrasonic sensors
+int LeftSensorPinTrig = 25;
+int LeftSensorPinEcho = 24;
+int RightSensorPinTrig = 22;
+int RightSensorPinEcho = 23;
+int FrontSensorPinTrig = 27;
+int FrontSensorPinEcho = 26;
+
+// Button pin
 int ButtonPin = A0;
 
-// Rango máximo de los ultrasonicos
+// Set the max range for the ultrasonic
 int FrontDistanceRange = 35;
 int LeftDistanceRange = 50;
 int RightDistanceRange = 50;
 
-// Rotación del servo
-int LeftServoRotation = 800;
-int RightServoRotation = 0;
-int CenterServoRotation = 500;
+// ServoMotor
+int ServoPin = 28;
 
-// Firma de color para la cámara Pixy
+// Set the rotation of the servo
+int LeftServoRotation = 0;
+int RightServoRotation = 180;
+int CenterServoRotation = 90;
+
+// Signature for the PixyCam
 int RedColorSignature = 1;
 int GreenColorSignature = 2;
 
-// Pines del encoder rotativo
-int EncoderPinA = A1;
-int EncoderPinB = A2;
-volatile long pulseCount = 0; // Cuenta de pulsos
-const int ppr = 360; // Pulsos por revolución
-const float wheelDiameter = 0.1; // Diámetro de la rueda en metros
-
+// Debug
+bool Debug = false;
+bool ButtonEnabled = false; // Enable or disable button for testing purpose
 bool BotInRotation = false;
-bool ButtonPressed = false;
-bool BrickDetected = false;
-bool BotStop = false;
 
-bool Debug = true;
 
-HCSR04 LeftSensor (LeftSensorPinTrig, LeftSensorPinEcho);
-HCSR04 RightSensor (RightSensorPinTrig, RightSensorPinEcho);
-HCSR04 FrontSensor (FrontSensorPinTrig, FrontSensorPinEcho);
-
+HCSR04 LeftSensor(LeftSensorPinTrig, LeftSensorPinEcho);
+HCSR04 RightSensor(RightSensorPinTrig, RightSensorPinEcho);
+HCSR04 FrontSensor(FrontSensorPinTrig, FrontSensorPinEcho);
+Servo servo;
 Pixy2 pixy;
 
+// PID control variables
+double setpoint = 0, input, output;
+double Kp = 1.0, Ki = 0.0, Kd = 0.0;
+int DefaultVelocity = 200;
+int CurrentVelocity = DefaultVelocity;
+
 void MotorForward() {
-  digitalWrite(MotorPin1, HIGH);
-  digitalWrite(MotorPin2, LOW);
+  analogWrite(R_PWM, 0);
+  analogWrite(L_PWM, CurrentVelocity);
 }
 
 void MotorBackward() {
-  digitalWrite(MotorPin1, LOW);
-  digitalWrite(MotorPin2, HIGH);
+    analogWrite(R_PWM, CurrentVelocity);
+   analogWrite(L_PWM, 0);
 }
 
-void ServoRotation(int Angle) 
-{
-  if (!BotInRotation) {
-    pixy.setServos(0, CenterServoRotation);
-  }
-  pixy.setServos(0, Angle);
-}
-
-void AddPulse() {
-  pulseCount++;
-}
-
-// Función para calcular la distancia recorrida
-float calculateDistance(long pulses, int ppr, float wheelDiameter) {
-  float circumference = 3.14159265358979323846 * wheelDiameter;
-  float distancePerPulse = circumference / ppr;
-  return distancePerPulse * pulses;
+void ServoRotation(int Angle) {
+  servo.write(Angle);
 }
 
 void setup() {
-  Serial.begin(9600);
-  Serial.println("Setup Working");
-  
-  pinMode(MotorPin1, OUTPUT);
-  pinMode(MotorPin2, OUTPUT);
+  pinMode(R_IS, OUTPUT);
+  pinMode(R_EN, OUTPUT);
+  pinMode(R_PWM, OUTPUT);
+  pinMode(L_IS, OUTPUT);
+  pinMode(L_EN, OUTPUT);
+  pinMode(L_PWM, OUTPUT);
+  digitalWrite(R_IS, LOW);
+  digitalWrite(L_IS, LOW);
+  digitalWrite(R_EN, HIGH);
+  digitalWrite(L_EN, HIGH);
+  pinMode(ServoPin, OUTPUT);
   pinMode(ButtonPin, INPUT);
+  Serial.begin(9600);
 
-  pinMode(EncoderPinA, INPUT_PULLUP);
-  pinMode(EncoderPinB, INPUT_PULLUP);
- 
-  attachInterrupt(digitalPinToInterrupt(EncoderPinA), AddPulse, CHANGE);
-
-  Serial.println("Initializing Pixy2...");
-  int pixyInitStatus = pixy.init();
-  if (pixyInitStatus != 0) {
-    Serial.print("Pixy2 initialization failed with code: ");
-    Serial.println(pixyInitStatus);
-  } else {
-    Serial.println("Pixy2 initialized successfully");
-  }
-  
-  Serial.println("Setup Complete");
   ServoRotation(CenterServoRotation);
+
+  // Initialize PixyCam
+  pixy.init();
 }
 
 void loop() {
-  if (BotStop) {
-    return;
-  }
 
-  if (!ButtonPressed) {
-    int buttonState = analogRead(ButtonPin);
-    delay(50); // debounce delay
-    if (buttonState == LOW) {
-      ButtonPressed = true;
-      Serial.println("Button Pressed");
+  if (ButtonEnabled == true) {
+     int buttonState = 0;
+     buttonState = digitalRead(ButtonPin);
+     if (buttonState == 0) {
+      Serial.println("Pressed >");
+      }
     }
   }
 
   int FrontDistance = FrontSensor.dist();
   int LeftDistance = LeftSensor.dist();
-  int RightDistance = RightSensor.dist();
-
+  int RightDistance = RightSensor.dist(); // Get the distance of the ultrasonic sensors
   bool RedBlockDetected = false;
   bool GreenBlockDetected = false;
 
+  if (Debug == true) {
+    Serial.print("Left Distance: ");
+    Serial.println(LeftDistance);
+    Serial.print("Right Distance: ");
+    Serial.println(RightDistance);
+    Serial.print("Front Distance: ");
+    Serial.println(FrontDistance);
+  }
+
+  // Get the largest object detected by the PixyCam
   pixy.ccc.getBlocks();
   if (pixy.ccc.numBlocks) {
     for (int i = 0; i < pixy.ccc.numBlocks; i++) {
@@ -137,60 +130,40 @@ void loop() {
     }
   }
 
-  if (Debug) {
-    Serial.print("Front Distance: ");
-    Serial.println(FrontDistance);
-    Serial.print("Left Distance: ");
-    Serial.println(LeftDistance);
-    Serial.print("Right Distance: ");
-    Serial.println(RightDistance);
-  }
-
-  if (RedBlockDetected || GreenBlockDetected) {
-    if (RedBlockDetected && !BotInRotation) {
+  // Color-based directional control
+  if ((RedBlockDetected || GreenBlockDetected) && !BotInRotation) {
+    CurrentVelocity = 135;
+    if (RedBlockDetected) {
       ServoRotation(RightServoRotation);
-      if (Debug) {
-        Serial.println("Red Block Detected: Rotating Right");
-      }
-    } else if (GreenBlockDetected && !BotInRotation) {
+    } else if (GreenBlockDetected) {
       ServoRotation(LeftServoRotation);
-      if (Debug) {
-        Serial.println("Green Block Detected: Rotating Left");
-      }
     }
-    BrickDetected = true;
     BotInRotation = true;
   } else if (FrontDistance <= FrontDistanceRange && FrontDistance > 0) {
-    if (BrickDetected) {
-       BotInRotation = false;
+    CurrentVelocity = 135;
+    if (LeftDistance <= LeftDistanceRange || LeftDistance < RightDistance) {
+      ServoRotation(CenterServoRotation + RightServoRotation); // Turn right
+    } else if (RightDistance <= RightDistanceRange || RightDistance < LeftDistance ) {
+      ServoRotation(CenterServoRotation + LeftServoRotation); // Turn left
     }
+    
+    
+    //MotorBackward(); // Move backward to avoid obstacle
 
-    if (Debug) {
-      Serial.println("Obstacle Detected Ahead");
-    }
-    if (LeftDistance > RightDistance) {
-      BotInRotation = true;
-      if (Debug) {
-        Serial.println("Turning Left");
-      }
-      ServoRotation(LeftServoRotation);
-    } else if (RightDistance > LeftDistance) {
-      BotInRotation = true;
-      if (Debug) {
-        Serial.println("Turning Right");
-      }
-      ServoRotation(RightServoRotation);
-    }
   } else {
-    if (BotInRotation) {
-      BotInRotation = false;
-      ServoRotation(CenterServoRotation);
-      Serial.println("Resuming Forward Motion");
-    }
+    BotInRotation = false;
+    CurrentVelocity = DefaultVelocity;
+    ServoRotation(CenterServoRotation);
+
+    // Calculate the input for the PID controller
+    input = LeftDistance - RightDistance; // Difference between left and right distances
+
+    // Adjust the servo position based on PID output
+   // ServoRotation(CenterServoRotation + output);  // CenterServoRotation is the center position
+
+    MotorForward();
   }
-}
-      Serial.println("Resuming Forward Motion");
-    }
-  }
- 
+
+  // Short delay
+  delay(100);
 }
